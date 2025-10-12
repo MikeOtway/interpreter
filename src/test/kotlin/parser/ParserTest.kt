@@ -35,7 +35,13 @@ class ParserTest {
         val expectedIdentifiers = listOf("x", "y", "foobar")
 
         expectedIdentifiers.forEachIndexed { index, expectedIdentifier ->
-            testLetStatement(program.statements[index], expectedIdentifier)
+            val statement = program.statements[index]
+            assertThat(statement.tokenLiteral()).isEqualTo(LET_TOKEN)
+
+            assertExpressionType<LetStatement>(statement) {
+                assertThat(it.name?.value).isEqualTo(expectedIdentifier)
+                assertThat(it.name?.tokenLiteral()).isEqualTo(expectedIdentifier)
+            }
         }
     }
 
@@ -49,9 +55,9 @@ class ParserTest {
 
         val program = parseInput(input, expectedStatements = 3)
 
-        program.statements.forEach {
-            assertThat(it).isInstanceOf(ReturnStatement::class.java)
-            assertThat(it.tokenLiteral()).isEqualTo(RETURN_TOKEN)
+        program.statements.forEach { statement ->
+            assertThat(statement.tokenLiteral()).isEqualTo(RETURN_TOKEN)
+            assertExpressionType<ReturnStatement>(statement) {}
         }
     }
 
@@ -62,6 +68,7 @@ class ParserTest {
         val program = parseInput(input)
 
         val expression = getExpressionFromStatement(program.statements.first())
+
         assertExpressionType<Identifier>(expression) {
             assertThat(it.value).isEqualTo("foobar")
             assertThat(it.tokenLiteral()).isEqualTo("foobar")
@@ -74,16 +81,14 @@ class ParserTest {
         val program = parseInput(input)
 
         val expression = getExpressionFromStatement(program.statements.first())
-        assertExpressionType<IntegerLiteral>(expression) {
-            assertThat(it.value).isEqualTo(5)
-            assertThat(it.tokenLiteral()).isEqualTo("5")
-        }
+
+        assertIntegerLiteral(expression, 5)
     }
 
     @Test
     fun `should parse prefix expressions`() {
         val prefixTests = listOf(
-            PrefixScenario(input = "!5;", operator ="!", integerValue = 5),
+            PrefixScenario(input = "!5;", operator = "!", integerValue = 5),
             PrefixScenario(input = "-15;", operator = "-", integerValue = 15)
         )
         prefixTests.forEach { scenario ->
@@ -149,9 +154,9 @@ class ParserTest {
     }
 
     private fun assertIntegerLiteral(expression: Expression?, value: Long) {
-        assertExpressionType<IntegerLiteral>(expression) { integerLiteral ->
-            assertThat(integerLiteral.value).isEqualTo(value)
-            assertThat(integerLiteral.tokenLiteral()).isEqualTo("$value")
+        assertExpressionType<IntegerLiteral>(expression) {
+            assertThat(it.value).isEqualTo(value)
+            assertThat(it.tokenLiteral()).isEqualTo("$value")
         }
     }
 
@@ -179,15 +184,6 @@ class ParserTest {
 
     private fun createParser(input: String) = Parser(Lexer(input))
         .also { checkParserErrors(it) }
-
-    private fun testLetStatement(statement: Statement, expectedIdentifier: String) {
-        assertThat(statement.tokenLiteral()).isEqualTo(LET_TOKEN)
-        assertThat(statement).isInstanceOf(LetStatement::class.java)
-
-        val letStatement = statement as LetStatement
-        assertThat(letStatement.name?.value).isEqualTo(expectedIdentifier)
-        assertThat(letStatement.name?.tokenLiteral()).isEqualTo(expectedIdentifier)
-    }
 
     private fun checkParserErrors(parser: Parser) {
         val errors = parser.getErrors()
