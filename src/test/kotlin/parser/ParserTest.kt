@@ -122,6 +122,32 @@ class ParserTest {
         }
     }
 
+    @Test
+    fun `should parse operator with precedence`() {
+        val operatorTests = listOf(
+            Scenario(input = "-1 * 2 + 3", expected = "(((-1) * 2) + 3)"),
+            Scenario(input = "-a * b", expected = "((-a) * b)"),
+            Scenario(input = "!-a", expected = "(!(-a))"),
+            Scenario(input = "a + b + c", expected = "((a + b) + c)"),
+            Scenario(input = "a + b - c", expected = "((a + b) - c)"),
+            Scenario(input = "a * b * c", expected = "((a * b) * c)"),
+            Scenario(input = "a * b / c", expected = "((a * b) / c)"),
+            Scenario(input = "a + b / c", expected = "(a + (b / c))"),
+            Scenario(input = "a + b * c + d / e - f", expected = "(((a + (b * c)) + (d / e)) - f)"),
+            Scenario(input = "3 + 4; -5 * 5", expected = "(3 + 4)((-5) * 5)"),
+            Scenario(input = "5 > 4 == 3 < 4", expected = "((5 > 4) == (3 < 4))"),
+            Scenario(input = "5 < 4 != 3 > 4", expected = "((5 < 4) != (3 > 4))"),
+            Scenario(input = "3 + 4 * 5 == 3 * 1 + 4 * 5", expected = "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))")
+        )
+
+        operatorTests.forEach { scenario ->
+            val program = createParser(scenario.input)
+                .parseProgram()
+
+            assertThat(program.toString()).isEqualTo(scenario.expected)
+        }
+    }
+
     private fun assertIntegerLiteral(expression: Expression?, value: Long) {
         assertExpressionType<IntegerLiteral>(expression) { integerLiteral ->
             assertThat(integerLiteral.value).isEqualTo(value)
@@ -131,6 +157,7 @@ class ParserTest {
 
     data class PrefixScenario(val input: String, val operator: String, val integerValue: Long)
     data class InfixScenario(val input: String, val leftValue: Long, val operator: String, val rightValue: Long)
+    data class Scenario(val input: String, val expected: String)
 
     private fun parseInput(input: String, expectedStatements: Int = 1) = createParser(input)
         .parseProgram()
