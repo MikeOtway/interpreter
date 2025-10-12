@@ -1,6 +1,9 @@
 package parser
 
+import ast.Expression
+import ast.ExpressionStatement
 import ast.Identifier
+import ast.IntegerLiteral
 import ast.LetStatement
 import ast.Program
 import ast.ReturnStatement
@@ -9,14 +12,42 @@ import lexer.Lexer
 import token.Token
 import token.TokenType
 
+typealias PrefixParseFn = () -> Expression?
+typealias InlineParseFn = (Expression) -> Expression
+
 class Parser(private val lexer: Lexer) {
     private val errors = mutableListOf<String>()
     private var currentToken: Token? = null
     private var peekToken: Token? = null
-
+    private var prefixParseFunctions = mutableMapOf<TokenType, PrefixParseFn>()
+    private var infixParseFunctions = mutableMapOf<TokenType, InlineParseFn>()
 
     init {
+        registerPrefix(TokenType.IDENT, ::parseIdentifier)
+        registerPrefix(TokenType.INT,  ::parseIntegerLiteral)
+
         advanceTokens(2) // Initialise both current and peek tokens
+    }
+
+    fun registerPrefix(tokenType: TokenType, parseFn: PrefixParseFn) {
+        prefixParseFunctions[tokenType] = parseFn
+    }
+
+    fun registerInlineParseFunction(tokenType: TokenType, parseFn: InlineParseFn) {
+        infixParseFunctions[tokenType] = parseFn
+    }
+
+    private fun parseIdentifier(): Expression =
+        Identifier(token = requireCurrentToken(), value = requireCurrentToken().literal)
+
+    private fun parseIntegerLiteral(): Expression? {
+        val value = requireCurrentToken().literal.toLongOrNull()
+        if (value == null) {
+            errors.add("could not parse ${currentToken?.literal} as integer")
+            return null
+        }
+
+        return IntegerLiteral(token = requireCurrentToken(), value = value)
     }
 
     fun parseProgram(): Program {
@@ -35,7 +66,7 @@ class Parser(private val lexer: Lexer) {
         return when (currentToken?.type) {
             TokenType.LET -> parseLetStatement()
             TokenType.RETURN -> parseReturnStatement()
-            else -> null
+            else -> parseExpressionStatement()
         }
     }
 
@@ -44,10 +75,12 @@ class Parser(private val lexer: Lexer) {
 
         if (!expectNextToken(TokenType.IDENT)) return null
 
-        statement = statement.copy(name = Identifier(
-            token = requireCurrentToken(),
-            value = requireCurrentToken().literal
-        ))
+        statement = statement.copy(
+            name = Identifier(
+                token = requireCurrentToken(),
+                value = requireCurrentToken().literal
+            )
+        )
 
         if (!expectNextToken(TokenType.ASSIGN)) return null
 
@@ -61,6 +94,22 @@ class Parser(private val lexer: Lexer) {
         advanceToken()
         advanceTokenUntil(TokenType.SEMICOLON)
         return statement
+    }
+
+    private fun parseExpressionStatement(): ExpressionStatement {
+        val statement = ExpressionStatement(
+            token = requireCurrentToken(),
+            expression = parseExpression(Precedence.LOWEST)
+        )
+        if (isPeekToken(TokenType.SEMICOLON)) {
+            advanceToken()
+        }
+        return statement
+    }
+
+    private fun parseExpression(precedence: Precedence): Expression? {
+        val prefix = prefixParseFunctions[currentToken?.type] ?: return null
+        return prefix()
     }
 
     private fun advanceToken() {
@@ -99,5 +148,15 @@ class Parser(private val lexer: Lexer) {
     fun recordPeekError(tokenType: TokenType) {
         val message = "expected next token to be $tokenType, got ${peekToken?.type} instead"
         errors.add(message)
+    }
+
+    enum class Precedence(val value: Int) {
+        LOWEST(0),
+        EQUALS(1),        // ==
+        LESSGREATER(2),   // > or <
+        SUM(3),           // +
+        PRODUCT(4),       // *
+        PREFIX(5),        // -X or !X
+        CALL(6)           // myFunction(X)
     }
 }

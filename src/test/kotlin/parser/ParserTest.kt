@@ -1,5 +1,8 @@
 package parser
 
+import ast.ExpressionStatement
+import ast.Identifier
+import ast.IntegerLiteral
 import ast.LetStatement
 import ast.ReturnStatement
 import ast.Statement
@@ -17,11 +20,6 @@ class ParserTest {
         private const val RETURN_TOKEN = "return"
     }
 
-    private fun createParser(input: String): Parser {
-        val lexer = Lexer(input)
-        return Parser(lexer)
-    }
-
     @Test
     fun `should parse let statements`() {
         val input = """
@@ -30,18 +28,11 @@ class ParserTest {
             let foobar = 838383;
         """.trimIndent()
 
-        val parser = createParser(input)
-        val program = parser.parseProgram()
-        checkParserErrors(parser)
-
-        assertNotNull(program)
-        assertThat(program.statements).hasSize(3)
-
+        val program = parseInput(input, expectedStatements = 3)
         val expectedIdentifiers = listOf("x", "y", "foobar")
 
         expectedIdentifiers.forEachIndexed { index, expectedIdentifier ->
-            val statement = program.statements[index]
-            testLetStatement(statement, expectedIdentifier)
+            testLetStatement(program.statements[index], expectedIdentifier)
         }
     }
 
@@ -53,12 +44,7 @@ class ParserTest {
             return 993322;
         """.trimIndent()
 
-        val parser = createParser(input)
-        val program = parser.parseProgram()
-        checkParserErrors(parser)
-
-        assertNotNull(program)
-        assertThat(program.statements).hasSize(3)
+        val program = parseInput(input, expectedStatements = 3)
 
         program.statements.forEach {
             assertThat(it).isInstanceOf(ReturnStatement::class.java)
@@ -66,16 +52,51 @@ class ParserTest {
         }
     }
 
-//    @Test
-//    fun `should report parser errors`() {
-//        val input = "let = 5;"
-//        val parser = createParser(input)
-//
-//        assertThrows<IllegalStateException> {
-//            parser.parseProgram()
-//            checkParserErrors(parser)
-//        }
-//    }
+    @Test
+    fun `should parse identifier expression`() {
+        val input = "foobar;"
+
+        val program = parseInput(input, expectedStatements = 1)
+
+        val expression = getExpressionFromStatement(program.statements.first())
+        assertExpressionType<Identifier>(expression) {
+            assertThat(it.value).isEqualTo("foobar")
+            assertThat(it.tokenLiteral()).isEqualTo("foobar")
+        }
+    }
+
+    @Test
+    fun `should parse integer literal expression`() {
+        val input = "5;"
+        val program = parseInput(input, expectedStatements = 1)
+
+        val expression = getExpressionFromStatement(program.statements.first())
+        assertExpressionType<IntegerLiteral>(expression) {
+            assertThat(it.value).isEqualTo(5)
+            assertThat(it.tokenLiteral()).isEqualTo("5")
+        }
+    }
+
+    private fun parseInput(input: String, expectedStatements: Int) = createParser(input)
+        .parseProgram()
+        .also { program ->
+            assertNotNull(program)
+            assertThat(program.statements).hasSize(expectedStatements)
+        }
+
+    private fun getExpressionFromStatement(statement: Statement) =
+        (statement as ExpressionStatement).expression
+
+    private inline fun <reified  T> assertExpressionType(
+        expression: Any?,
+        assertions: (T) -> Unit
+    ){
+        assertThat(expression).isInstanceOf(T::class.java)
+        assertions(expression as T)
+    }
+
+    private fun createParser(input: String) = Parser(Lexer(input))
+        .also { checkParserErrors(it) }
 
     private fun testLetStatement(statement: Statement, expectedIdentifier: String) {
         assertThat(statement.tokenLiteral()).isEqualTo(LET_TOKEN)
@@ -90,12 +111,11 @@ class ParserTest {
         val errors = parser.getErrors()
         if (errors.isEmpty()) return
 
-        val errorMessage = buildString {
+        fail(buildString {
             appendLine("Parser encountered ${errors.size} errors:")
             errors.forEachIndexed { index, error ->
                 appendLine("${index + 1}. $error")
             }
-        }
-        fail(errorMessage)
+        })
     }
 }

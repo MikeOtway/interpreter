@@ -48,3 +48,19 @@ data class ReturnStatement(
     override fun tokenLiteral(): String = token.literal
     override fun toString(): String = "${tokenLiteral()} ${returnValue?.toString() ?: ""};"
 }
+
+data class ExpressionStatement(
+    val token: Token,
+    val expression: Expression? = null
+): Statement {
+    override fun tokenLiteral(): String = token.literal
+    override fun toString(): String = expression?.toString() ?: ""
+}
+
+data class IntegerLiteral(
+    val token: Token,
+    val value: Long
+): Expression {
+    override fun tokenLiteral(): String = token.literal
+    override fun toString(): String = token.literal
+}
