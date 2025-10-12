@@ -52,7 +52,7 @@ data class ReturnStatement(
 data class ExpressionStatement(
     val token: Token,
     val expression: Expression? = null
-): Statement {
+) : Statement {
     override fun tokenLiteral(): String = token.literal
     override fun toString(): String = expression?.toString() ?: ""
 }
@@ -60,7 +60,26 @@ data class ExpressionStatement(
 data class IntegerLiteral(
     val token: Token,
     val value: Long
-): Expression {
+) : Expression {
     override fun tokenLiteral(): String = token.literal
     override fun toString(): String = token.literal
+}
+
+data class PrefixExpression(
+    val token: Token,
+    val operator: String,
+    val right: Expression?
+) : Expression {
+    override fun tokenLiteral() = token.literal
+    override fun toString(): String = "($operator$right)"
+}
+
+data class InfixExpression(
+    val token: Token,
+    val left: Expression?,
+    val operator: String,
+    val right: Expression?
+): Expression {
+    override fun tokenLiteral(): String = token.literal
+    override fun toString(): String =  "($left $operator $right)"
 }
