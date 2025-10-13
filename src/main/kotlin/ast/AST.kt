@@ -79,15 +79,34 @@ data class InfixExpression(
     val left: Expression?,
     val operator: String,
     val right: Expression?
-): Expression {
+) : Expression {
     override fun tokenLiteral(): String = token.literal
-    override fun toString(): String =  "($left $operator $right)"
+    override fun toString(): String = "($left $operator $right)"
 }
 
 data class BooleanExpression(
     val token: Token,
     val value: Boolean
-): Expression {
+) : Expression {
     override fun tokenLiteral(): String = token.literal
     override fun toString(): String = token.literal
+}
+
+data class IfExpression(
+    val token: Token,
+    val condition: Expression?,
+    val consequence: BlockStatement,
+    val alternative: BlockStatement? = null
+) : Expression {
+    override fun tokenLiteral(): String = token.literal
+    override fun toString(): String =
+        "if $condition $consequence" + (alternative?.let { " else $it" } ?: "")
+}
+
+data class BlockStatement(
+    val token: Token,
+    val statements: List<Statement>
+) : Statement {
+    override fun tokenLiteral(): String = token.literal
+    override fun toString(): String = statements.joinToString(separator = "")
 }

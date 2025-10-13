@@ -1,9 +1,11 @@
 package parser
 
+import ast.BlockStatement
 import ast.BooleanExpression
 import ast.Expression
 import ast.ExpressionStatement
 import ast.Identifier
+import ast.IfExpression
 import ast.InfixExpression
 import ast.IntegerLiteral
 import ast.LetStatement
@@ -39,6 +41,8 @@ class Parser(private val lexer: Lexer) {
         registerPrefix(TokenType.MINUS, ::parsePrefixExpression)
         registerPrefix(TokenType.TRUE, ::parseBoolean)
         registerPrefix(TokenType.FALSE, ::parseBoolean)
+        registerPrefix(TokenType.LPAREN, ::parseGroupedExpression)
+        registerPrefix(TokenType.IF, ::parseIfExpression)
         registerInfix(TokenType.PLUS, ::parseInfixExpression)
         registerInfix(TokenType.MINUS, ::parseInfixExpression)
         registerInfix(TokenType.SLASH, ::parseInfixExpression)
@@ -165,6 +169,56 @@ class Parser(private val lexer: Lexer) {
                 right = parseExpression(precedence)
             )
         }
+    }
+
+    private fun parseGroupedExpression(): Expression? {
+        advanceToken()
+
+        val expression = parseExpression(LOWEST)
+        if (!expectNextToken(TokenType.RPAREN)) return null
+
+        return expression
+    }
+
+    private fun parseIfExpression(): Expression? {
+        val current = requireCurrentToken()
+
+        if (!expectNextToken(TokenType.LPAREN)) return null
+
+        advanceToken()
+        val condition = parseExpression(LOWEST)
+
+        if (!expectNextToken(TokenType.RPAREN)) return null
+        if (!expectNextToken(TokenType.LBRACE)) return null
+
+        val consequence = parseBlockStatement()
+
+        val alternative = if (isPeekToken(TokenType.ELSE)) {
+            advanceToken()
+            if (!expectNextToken(TokenType.LBRACE)) return null
+            parseBlockStatement()
+        } else null
+
+        return IfExpression(
+            token = current,
+            condition = condition,
+            consequence = consequence,
+            alternative = alternative
+        )
+    }
+
+    private fun parseBlockStatement(): BlockStatement {
+        val current = requireCurrentToken()
+        val statements = mutableListOf<Statement>()
+
+        advanceToken()
+
+        while (!isCurrentToken(TokenType.RBRACE) && !isCurrentToken(TokenType.EOF)) {
+            val statement = parseStatement()
+            if (statement != null) statements.add(statement)
+            advanceToken()
+        }
+        return BlockStatement(token = current, statements = statements)
     }
 
     private fun parseExpression(precedence: Precedence): Expression? {

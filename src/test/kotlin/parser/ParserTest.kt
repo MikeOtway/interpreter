@@ -4,6 +4,7 @@ import ast.BooleanExpression
 import ast.Expression
 import ast.ExpressionStatement
 import ast.Identifier
+import ast.IfExpression
 import ast.InfixExpression
 import ast.IntegerLiteral
 import ast.LetStatement
@@ -68,10 +69,7 @@ class ParserTest {
         val program = parseInput(input)
         val expression = getExpressionFromStatement(program.statements.first())
 
-        assertExpressionType<Identifier>(expression) {
-            assertThat(it.value).isEqualTo("foobar")
-            assertThat(it.tokenLiteral()).isEqualTo("foobar")
-        }
+        assertIdentifier(expression, "foobar")
     }
 
     @Test
@@ -128,11 +126,7 @@ class ParserTest {
             val program = parseInput(scenario.input)
             val expression = getExpressionFromStatement(program.statements.first())
 
-            assertExpressionType<InfixExpression>(expression) {
-                assertLiteral(it.left, scenario.leftValue)
-                assertThat(it.operator).isEqualTo(scenario.operator)
-                assertLiteral(it.right, scenario.rightValue)
-            }
+            assertInfixExpression(expression, scenario.leftValue, scenario.operator, scenario.rightValue)
         }
     }
 
@@ -140,7 +134,7 @@ class ParserTest {
     fun `should parse operator with precedence`() {
         val operatorTests = mapOf(
             "-1 * 2 + 3" to "(((-1) * 2) + 3)",
-            "-a * b" to  "((-a) * b)",
+            "-a * b" to "((-a) * b)",
             "!-a" to "(!(-a))",
             "true" to "true",
             "false" to "false",
@@ -155,7 +149,12 @@ class ParserTest {
             "3 + 4; -5 * 5" to "(3 + 4)((-5) * 5)",
             "5 > 4 == 3 < 4" to "((5 > 4) == (3 < 4))",
             "5 < 4 != 3 > 4" to "((5 < 4) != (3 > 4))",
-            "3 + 4 * 5 == 3 * 1 + 4 * 5" to "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))"
+            "3 + 4 * 5 == 3 * 1 + 4 * 5" to "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))",
+            "1 + (2 + 3) + 4" to "((1 + (2 + 3)) + 4)",
+            "(5 + 5) * 2" to "((5 + 5) * 2)",
+            "2 / (5 + 5)" to "(2 / (5 + 5))",
+            "-(5 + 5)" to "(-(5 + 5))",
+            "!(true == true)" to "(!(true == true))",
         )
 
         operatorTests.forEach { (input, expected) ->
@@ -164,8 +163,45 @@ class ParserTest {
         }
     }
 
+    @Test
+    fun `should parse if expression`() {
+        val testCases = mapOf(
+            "if (x < y) { x }" to null,
+            "if (x < y) { x } else { y }" to "y"
+        )
+
+        testCases.forEach { (input, expectedAlternative) ->
+            val program = parseInput(input)
+            val expression = getExpressionFromStatement(program.statements.first())
+
+            assertExpressionType<IfExpression>(expression) { ifExpr ->
+                // Check condition
+                assertInfixExpression(ifExpr.condition, "x", "<", "y")
+
+                // Check consequence block
+                assertThat(ifExpr.consequence.statements).hasSize(1)
+                val consequenceExpr = getExpressionFromStatement(ifExpr.consequence.statements.first())
+                assertIdentifier(consequenceExpr, "x")
+
+                // Check alternative block if present
+                expectedAlternative?.let { alt ->
+                    val alternativeExpr = getExpressionFromStatement(ifExpr.alternative?.statements?.first()!!)
+                    assertIdentifier(alternativeExpr, alt)
+                }
+            }
+        }
+    }
+
+    private fun assertIdentifier(expression: Expression?, value: String) {
+        assertExpressionType<Identifier>(expression) {
+            assertThat(it.value).isEqualTo(value)
+            assertThat(it.tokenLiteral()).isEqualTo(value)
+        }
+    }
+
     private fun assertLiteral(expression: Expression?, value: Any) {
         when (value) {
+            is String -> assertIdentifier(expression, value)
             is Long -> assertIntegerLiteral(expression, value)
             is Boolean -> assertBooleanExpression(expression, value)
             else -> fail("Unsupported literal type: ${value::class}")
@@ -183,6 +219,14 @@ class ParserTest {
         assertExpressionType<BooleanExpression>(expression) {
             assertThat(it.value).isEqualTo(value)
             assertThat(it.tokenLiteral()).isEqualTo("$value")
+        }
+    }
+
+    private fun assertInfixExpression(expression: Expression?, leftValue: Any, operator: String, rightValue: Any) {
+        assertExpressionType<InfixExpression>(expression) {
+            assertLiteral(it.left, leftValue)
+            assertThat(it.operator).isEqualTo(operator)
+            assertLiteral(it.right, rightValue)
         }
     }
 
