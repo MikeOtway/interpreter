@@ -32,8 +32,6 @@ class Parser(private val lexer: Lexer) {
     private var prefixParseFunctions = mutableMapOf<TokenType, PrefixParseFn>()
     private var infixParseFunctions = mutableMapOf<TokenType, InlineParseFn>()
 
-    val tracer = ParserTracing()
-
     init {
         registerPrefix(TokenType.IDENT, ::parseIdentifier)
         registerPrefix(TokenType.INT, ::parseIntegerLiteral)
@@ -70,15 +68,13 @@ class Parser(private val lexer: Lexer) {
         BooleanExpression(token = requireCurrentToken(), value = isCurrentToken(TokenType.TRUE))
 
     private fun parseIntegerLiteral(): Expression? {
-        trace(::parseIntegerLiteral.name) {
-            val value = requireCurrentToken().literal.toLongOrNull()
-            if (value == null) {
-                errors.add("could not parse ${currentToken?.literal} as integer")
-                return null
-            }
-
-            return IntegerLiteral(token = requireCurrentToken(), value = value)
+        val value = requireCurrentToken().literal.toLongOrNull()
+        if (value == null) {
+            errors.add("could not parse ${currentToken?.literal} as integer")
+            return null
         }
+
+        return IntegerLiteral(token = requireCurrentToken(), value = value)
     }
 
     fun parseProgram(): Program {
@@ -128,47 +124,41 @@ class Parser(private val lexer: Lexer) {
     }
 
     private fun parseExpressionStatement(): ExpressionStatement {
-        trace(::parseExpressionStatement.name) {
-            val statement = ExpressionStatement(
-                token = requireCurrentToken(),
-                expression = parseExpression(LOWEST)
-            )
-            if (isPeekToken(TokenType.SEMICOLON)) {
-                advanceToken()
-            }
-            return statement
+        val statement = ExpressionStatement(
+            token = requireCurrentToken(),
+            expression = parseExpression(LOWEST)
+        )
+        if (isPeekToken(TokenType.SEMICOLON)) {
+            advanceToken()
         }
+        return statement
     }
 
     private fun parsePrefixExpression(): Expression {
-        trace(::parsePrefixExpression.name) {
-            val prefixToken = requireCurrentToken()
+        val prefixToken = requireCurrentToken()
 
-            advanceToken()
+        advanceToken()
 
-            return PrefixExpression(
-                token = prefixToken,
-                operator = prefixToken.literal,
-                right = parseExpression(Precedence.PREFIX)
-            )
-        }
+        return PrefixExpression(
+            token = prefixToken,
+            operator = prefixToken.literal,
+            right = parseExpression(Precedence.PREFIX)
+        )
     }
 
     private fun parseInfixExpression(left: Expression?): Expression {
-        trace(::parseInfixExpression.name) {
-            val infixToken = requireCurrentToken()
+        val infixToken = requireCurrentToken()
 
 
-            val precedence = currentPrecedence()
-            advanceToken()
+        val precedence = currentPrecedence()
+        advanceToken()
 
-            return InfixExpression(
-                token = infixToken,
-                operator = infixToken.literal,
-                left = left,
-                right = parseExpression(precedence)
-            )
-        }
+        return InfixExpression(
+            token = infixToken,
+            operator = infixToken.literal,
+            left = left,
+            right = parseExpression(precedence)
+        )
     }
 
     private fun parseGroupedExpression(): Expression? {
@@ -222,22 +212,20 @@ class Parser(private val lexer: Lexer) {
     }
 
     private fun parseExpression(precedence: Precedence): Expression? {
-        trace(::parseExpression.name) {
-            val prefix = prefixParseFunctions[currentToken?.type]
-            if (prefix == null) {
-                errors.add("no prefix parse function for ${requireCurrentToken().type} found")
-                return null
-            }
-            var leftExp = prefix()
-
-            while (!isPeekToken(TokenType.SEMICOLON) && precedence < peekPrecedence()) {
-                val infix = infixParseFunctions[peekToken?.type] ?: return leftExp
-                advanceToken()
-                leftExp = infix(leftExp)
-            }
-
-            return leftExp
+        val prefix = prefixParseFunctions[currentToken?.type]
+        if (prefix == null) {
+            errors.add("no prefix parse function for ${requireCurrentToken().type} found")
+            return null
         }
+        var leftExp = prefix()
+
+        while (!isPeekToken(TokenType.SEMICOLON) && precedence < peekPrecedence()) {
+            val infix = infixParseFunctions[peekToken?.type] ?: return leftExp
+            advanceToken()
+            leftExp = infix(leftExp)
+        }
+
+        return leftExp
     }
 
     private fun advanceToken() {
@@ -276,15 +264,6 @@ class Parser(private val lexer: Lexer) {
     fun recordPeekError(tokenType: TokenType) {
         val message = "expected next token to be $tokenType, got ${peekToken?.type} instead"
         errors.add(message)
-    }
-
-    inline fun <T> trace(message: String, block: () -> T): T {
-        val output = tracer.trace(message)
-        try {
-            return block()
-        } finally {
-            tracer.untrace(output)
-        }
     }
 
     private fun peekPrecedence(): Precedence = precedences[peekToken?.type] ?: LOWEST
