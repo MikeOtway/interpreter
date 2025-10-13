@@ -1,5 +1,6 @@
 package parser
 
+import ast.BooleanExpression
 import ast.Expression
 import ast.ExpressionStatement
 import ast.Identifier
@@ -36,6 +37,8 @@ class Parser(private val lexer: Lexer) {
         registerPrefix(TokenType.INT, ::parseIntegerLiteral)
         registerPrefix(TokenType.BANG, ::parsePrefixExpression)
         registerPrefix(TokenType.MINUS, ::parsePrefixExpression)
+        registerPrefix(TokenType.TRUE, ::parseBoolean)
+        registerPrefix(TokenType.FALSE, ::parseBoolean)
         registerInfix(TokenType.PLUS, ::parseInfixExpression)
         registerInfix(TokenType.MINUS, ::parseInfixExpression)
         registerInfix(TokenType.SLASH, ::parseInfixExpression)
@@ -58,6 +61,9 @@ class Parser(private val lexer: Lexer) {
 
     private fun parseIdentifier(): Expression =
         Identifier(token = requireCurrentToken(), value = requireCurrentToken().literal)
+
+    private fun parseBoolean(): Expression =
+        BooleanExpression(token = requireCurrentToken(), value = isCurrentToken(TokenType.TRUE))
 
     private fun parseIntegerLiteral(): Expression? {
         trace(::parseIntegerLiteral.name) {

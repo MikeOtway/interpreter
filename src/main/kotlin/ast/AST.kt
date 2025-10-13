@@ -83,3 +83,11 @@ data class InfixExpression(
     override fun tokenLiteral(): String = token.literal
     override fun toString(): String =  "($left $operator $right)"
 }
+
+data class BooleanExpression(
+    val token: Token,
+    val value: Boolean
+): Expression {
+    override fun tokenLiteral(): String = token.literal
+    override fun toString(): String = token.literal
+}

@@ -1,5 +1,6 @@
 package parser
 
+import ast.BooleanExpression
 import ast.Expression
 import ast.ExpressionStatement
 import ast.Identifier
@@ -64,9 +65,7 @@ class ParserTest {
     @Test
     fun `should parse identifier expression`() {
         val input = "foobar;"
-
         val program = parseInput(input)
-
         val expression = getExpressionFromStatement(program.statements.first())
 
         assertExpressionType<Identifier>(expression) {
@@ -76,28 +75,35 @@ class ParserTest {
     }
 
     @Test
-    fun `should parse integer literal expression`() {
-        val input = "5;"
-        val program = parseInput(input)
+    fun `should parse literal expressions`() {
+        val tests = listOf(
+            LiteralTestCase("5;", 5L),
+            LiteralTestCase("true;", true),
+            LiteralTestCase("false;", false)
+        )
 
-        val expression = getExpressionFromStatement(program.statements.first())
-
-        assertIntegerLiteral(expression, 5)
+        tests.forEach { testCase ->
+            val program = parseInput(testCase.input)
+            val expression = getExpressionFromStatement(program.statements.first())
+            assertLiteral(expression, testCase.expected)
+        }
     }
 
     @Test
     fun `should parse prefix expressions`() {
         val prefixTests = listOf(
-            PrefixScenario(input = "!5;", operator = "!", integerValue = 5),
-            PrefixScenario(input = "-15;", operator = "-", integerValue = 15)
+            PrefixTestCase("!5;", "!", 5L),
+            PrefixTestCase("-15;", "-", 15L),
+            PrefixTestCase("!true;", "!", true),
+            PrefixTestCase("!false;", "!", false)
         )
         prefixTests.forEach { scenario ->
             val program = parseInput(scenario.input)
-
             val expression = getExpressionFromStatement(program.statements.first())
+
             assertExpressionType<PrefixExpression>(expression) {
                 assertThat(it.operator).isEqualTo(scenario.operator)
-                assertIntegerLiteral(it.right, scenario.integerValue)
+                assertLiteral(it.right, scenario.value)
             }
         }
     }
@@ -105,51 +111,64 @@ class ParserTest {
     @Test
     fun `should parse infix expressions`() {
         val infixTests = listOf(
-            InfixScenario(input = "5 + 5;", leftValue = 5, operator = "+", rightValue = 5),
-            InfixScenario(input = "5 - 5;", leftValue = 5, operator = "-", rightValue = 5),
-            InfixScenario(input = "5 * 5;", leftValue = 5, operator = "*", rightValue = 5),
-            InfixScenario(input = "5 / 5;", leftValue = 5, operator = "/", rightValue = 5),
-            InfixScenario(input = "5 > 5;", leftValue = 5, operator = ">", rightValue = 5),
-            InfixScenario(input = "5 < 5;", leftValue = 5, operator = "<", rightValue = 5),
-            InfixScenario(input = "5 == 5;", leftValue = 5, operator = "==", rightValue = 5),
-            InfixScenario(input = "5 != 5;", leftValue = 5, operator = "!=", rightValue = 5),
+            InfixTestCase(input = "5 + 5;", leftValue = 5L, operator = "+", rightValue = 5L),
+            InfixTestCase(input = "5 - 5;", leftValue = 5L, operator = "-", rightValue = 5L),
+            InfixTestCase(input = "5 * 5;", leftValue = 5L, operator = "*", rightValue = 5L),
+            InfixTestCase(input = "5 / 5;", leftValue = 5L, operator = "/", rightValue = 5L),
+            InfixTestCase(input = "5 > 5;", leftValue = 5L, operator = ">", rightValue = 5L),
+            InfixTestCase(input = "5 < 5;", leftValue = 5L, operator = "<", rightValue = 5L),
+            InfixTestCase(input = "5 == 5;", leftValue = 5L, operator = "==", rightValue = 5L),
+            InfixTestCase(input = "5 != 5;", leftValue = 5L, operator = "!=", rightValue = 5L),
+            InfixTestCase(input = "true == true", leftValue = true, operator = "==", rightValue = true),
+            InfixTestCase(input = "true != false;", leftValue = true, operator = "!=", rightValue = false),
+            InfixTestCase(input = "false == false", leftValue = false, operator = "==", rightValue = false)
         )
 
         infixTests.forEach { scenario ->
             val program = parseInput(scenario.input)
-
             val expression = getExpressionFromStatement(program.statements.first())
+
             assertExpressionType<InfixExpression>(expression) {
-                assertIntegerLiteral(it.left, scenario.leftValue)
+                assertLiteral(it.left, scenario.leftValue)
                 assertThat(it.operator).isEqualTo(scenario.operator)
-                assertIntegerLiteral(it.right, scenario.rightValue)
+                assertLiteral(it.right, scenario.rightValue)
             }
         }
     }
 
     @Test
     fun `should parse operator with precedence`() {
-        val operatorTests = listOf(
-            Scenario(input = "-1 * 2 + 3", expected = "(((-1) * 2) + 3)"),
-            Scenario(input = "-a * b", expected = "((-a) * b)"),
-            Scenario(input = "!-a", expected = "(!(-a))"),
-            Scenario(input = "a + b + c", expected = "((a + b) + c)"),
-            Scenario(input = "a + b - c", expected = "((a + b) - c)"),
-            Scenario(input = "a * b * c", expected = "((a * b) * c)"),
-            Scenario(input = "a * b / c", expected = "((a * b) / c)"),
-            Scenario(input = "a + b / c", expected = "(a + (b / c))"),
-            Scenario(input = "a + b * c + d / e - f", expected = "(((a + (b * c)) + (d / e)) - f)"),
-            Scenario(input = "3 + 4; -5 * 5", expected = "(3 + 4)((-5) * 5)"),
-            Scenario(input = "5 > 4 == 3 < 4", expected = "((5 > 4) == (3 < 4))"),
-            Scenario(input = "5 < 4 != 3 > 4", expected = "((5 < 4) != (3 > 4))"),
-            Scenario(input = "3 + 4 * 5 == 3 * 1 + 4 * 5", expected = "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))")
+        val operatorTests = mapOf(
+            "-1 * 2 + 3" to "(((-1) * 2) + 3)",
+            "-a * b" to  "((-a) * b)",
+            "!-a" to "(!(-a))",
+            "true" to "true",
+            "false" to "false",
+            "3 > 5 == false" to "((3 > 5) == false)",
+            "3 < 5 == true" to "((3 < 5) == true)",
+            "a + b + c" to "((a + b) + c)",
+            "a + b - c" to "((a + b) - c)",
+            "a * b * c" to "((a * b) * c)",
+            "a * b / c" to "((a * b) / c)",
+            "a + b / c" to "(a + (b / c))",
+            "a + b * c + d / e - f" to "(((a + (b * c)) + (d / e)) - f)",
+            "3 + 4; -5 * 5" to "(3 + 4)((-5) * 5)",
+            "5 > 4 == 3 < 4" to "((5 > 4) == (3 < 4))",
+            "5 < 4 != 3 > 4" to "((5 < 4) != (3 > 4))",
+            "3 + 4 * 5 == 3 * 1 + 4 * 5" to "((3 + (4 * 5)) == ((3 * 1) + (4 * 5)))"
         )
 
-        operatorTests.forEach { scenario ->
-            val program = createParser(scenario.input)
-                .parseProgram()
+        operatorTests.forEach { (input, expected) ->
+            val program = createParser(input).parseProgram()
+            assertThat(program.toString()).isEqualTo(expected)
+        }
+    }
 
-            assertThat(program.toString()).isEqualTo(scenario.expected)
+    private fun assertLiteral(expression: Expression?, value: Any) {
+        when (value) {
+            is Long -> assertIntegerLiteral(expression, value)
+            is Boolean -> assertBooleanExpression(expression, value)
+            else -> fail("Unsupported literal type: ${value::class}")
         }
     }
 
@@ -160,9 +179,16 @@ class ParserTest {
         }
     }
 
-    data class PrefixScenario(val input: String, val operator: String, val integerValue: Long)
-    data class InfixScenario(val input: String, val leftValue: Long, val operator: String, val rightValue: Long)
-    data class Scenario(val input: String, val expected: String)
+    private fun assertBooleanExpression(expression: Expression?, value: Boolean) {
+        assertExpressionType<BooleanExpression>(expression) {
+            assertThat(it.value).isEqualTo(value)
+            assertThat(it.tokenLiteral()).isEqualTo("$value")
+        }
+    }
+
+    data class LiteralTestCase(val input: String, val expected: Any)
+    data class PrefixTestCase(val input: String, val operator: String, val value: Any)
+    data class InfixTestCase(val input: String, val leftValue: Any, val operator: String, val rightValue: Any)
 
     private fun parseInput(input: String, expectedStatements: Int = 1) = createParser(input)
         .parseProgram()
