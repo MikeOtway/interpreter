@@ -3,6 +3,7 @@ package parser
 import ast.BooleanExpression
 import ast.Expression
 import ast.ExpressionStatement
+import ast.FunctionLiteral
 import ast.Identifier
 import ast.IfExpression
 import ast.InfixExpression
@@ -192,6 +193,47 @@ class ParserTest {
         }
     }
 
+    @Test
+    fun `should parse function literal`() {
+        val input = "fn(x, y) { x + y; }"
+
+        val program = parseInput(input)
+        val expression = getExpressionFromStatement(program.statements.first())
+
+        assertExpressionType<FunctionLiteral>(expression) {
+            assertThat(it.parameters).hasSize(2)
+            assertLiteral(it.parameters?.get(0), "x")
+            assertLiteral(it.parameters?.get(1), "y")
+
+            // Check function body
+            assertThat(it.body.statements).hasSize(1)
+            val body = getExpressionFromStatement(it.body.statements.first())
+            assertInfixExpression(body, "x", "+", "y")
+        }
+    }
+
+    @Test
+    fun `should parse function parameters`() {
+        val tests = listOf(
+            FunctionLiteralTestCase("fn() {};", emptyList()),
+            FunctionLiteralTestCase("fn(x) {};", listOf("x")),
+            FunctionLiteralTestCase("fn(x, y, z) {};", listOf("x", "y", "z")),
+        )
+
+        tests.forEach { testCase ->
+            val program = parseInput(testCase.input)
+            val expression = getExpressionFromStatement(program.statements.first())
+
+            assertExpressionType<FunctionLiteral>(expression) {
+                assertThat(it.parameters).hasSize(testCase.expectedParams.size)
+
+                testCase.expectedParams.forEachIndexed { index, expectedParam ->
+                    assertLiteral(it.parameters?.get(index), expectedParam)
+                }
+            }
+        }
+    }
+
     private fun assertIdentifier(expression: Expression?, value: String) {
         assertExpressionType<Identifier>(expression) {
             assertThat(it.value).isEqualTo(value)
@@ -233,6 +275,7 @@ class ParserTest {
     data class LiteralTestCase(val input: String, val expected: Any)
     data class PrefixTestCase(val input: String, val operator: String, val value: Any)
     data class InfixTestCase(val input: String, val leftValue: Any, val operator: String, val rightValue: Any)
+    data class FunctionLiteralTestCase(val input: String, val expectedParams: List<String>)
 
     private fun parseInput(input: String, expectedStatements: Int = 1) = createParser(input)
         .parseProgram()

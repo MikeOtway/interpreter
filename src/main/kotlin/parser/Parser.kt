@@ -4,6 +4,7 @@ import ast.BlockStatement
 import ast.BooleanExpression
 import ast.Expression
 import ast.ExpressionStatement
+import ast.FunctionLiteral
 import ast.Identifier
 import ast.IfExpression
 import ast.InfixExpression
@@ -41,6 +42,7 @@ class Parser(private val lexer: Lexer) {
         registerPrefix(TokenType.FALSE, ::parseBoolean)
         registerPrefix(TokenType.LPAREN, ::parseGroupedExpression)
         registerPrefix(TokenType.IF, ::parseIfExpression)
+        registerPrefix(TokenType.FUNCTION, ::parseFunctionLiteral)
         registerInfix(TokenType.PLUS, ::parseInfixExpression)
         registerInfix(TokenType.MINUS, ::parseInfixExpression)
         registerInfix(TokenType.SLASH, ::parseInfixExpression)
@@ -195,6 +197,45 @@ class Parser(private val lexer: Lexer) {
             consequence = consequence,
             alternative = alternative
         )
+    }
+
+    private fun parseFunctionLiteral(): Expression? {
+        val current = requireCurrentToken()
+
+        if (!expectNextToken(TokenType.LPAREN)) return null
+
+        val parameters = parseFunctionParameters()
+
+        if (!expectNextToken(TokenType.LBRACE)) return null
+
+        return FunctionLiteral(
+            token = current,
+            parameters = parameters,
+            body = parseBlockStatement()
+        )
+    }
+
+    private fun parseFunctionParameters(): List<Identifier>? {
+        val parameters = mutableListOf<Identifier>()
+        if (isPeekToken(TokenType.RPAREN)) {
+            advanceToken()
+            return parameters
+        }
+
+        advanceToken()
+
+        val parameter = Identifier(token = requireCurrentToken(), value = requireCurrentToken().literal)
+        parameters.add(parameter)
+
+        while (isPeekToken(TokenType.COMMA)) {
+            advanceTokens(2)
+            val parameter = Identifier(token = requireCurrentToken(), value = requireCurrentToken().literal)
+            parameters.add(parameter)
+        }
+
+        if (!expectNextToken(TokenType.RPAREN)) return null
+
+        return parameters
     }
 
     private fun parseBlockStatement(): BlockStatement {
