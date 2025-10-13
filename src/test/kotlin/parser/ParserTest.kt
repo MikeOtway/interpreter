@@ -1,6 +1,7 @@
 package parser
 
 import ast.BooleanExpression
+import ast.CallExpression
 import ast.Expression
 import ast.ExpressionStatement
 import ast.FunctionLiteral
@@ -155,7 +156,9 @@ class ParserTest {
             "(5 + 5) * 2" to "((5 + 5) * 2)",
             "2 / (5 + 5)" to "(2 / (5 + 5))",
             "-(5 + 5)" to "(-(5 + 5))",
-            "!(true == true)" to "(!(true == true))",
+            "a + add(b * c) + d" to "((a + add((b * c))) + d)",
+            "add(a, b, 1, 2 * 3, 4 + 5, add(6, 7 * 8))" to "add(a, b, 1, (2 * 3), (4 + 5), add(6, (7 * 8)))",
+            "add(a + b + c * d / f + g)" to "add((((a + b) + ((c * d) / f)) + g))",
         )
 
         operatorTests.forEach { (input, expected) ->
@@ -213,7 +216,7 @@ class ParserTest {
     }
 
     @Test
-    fun `should parse function parameters`() {
+    fun `should parse function literal parameters`() {
         val tests = listOf(
             FunctionLiteralTestCase("fn() {};", emptyList()),
             FunctionLiteralTestCase("fn(x) {};", listOf("x")),
@@ -229,6 +232,46 @@ class ParserTest {
 
                 testCase.expectedParams.forEachIndexed { index, expectedParam ->
                     assertLiteral(it.parameters?.get(index), expectedParam)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `should parse call expression`() {
+        val input = "add(1, 2 * 3, 4 + 5);"
+
+        val program = parseInput(input)
+        val expression = getExpressionFromStatement(program.statements.first())
+
+        assertExpressionType<CallExpression>(expression) {
+            assertIdentifier(it.function, "add")
+            assertThat(it.arguments).hasSize(3)
+
+            assertLiteral(it.arguments?.get(0), 1L)
+            assertInfixExpression(it.arguments?.get(1), 2L, "*", 3L)
+            assertInfixExpression(it.arguments?.get(2), 4L, "+", 5L)
+        }
+    }
+
+    @Test
+    fun `should parse call expression parameters`() {
+        val tests = listOf(
+            CallExpressionTestCase("add();", "add", emptyList()),
+            CallExpressionTestCase("add(1);", "add", listOf("1")),
+            CallExpressionTestCase("add(1, 2 * 3, 4 + 5);", "add", listOf("1", "(2 * 3)", "(4 + 5)"))
+        )
+
+        tests.forEach { testCase ->
+            val program = parseInput(testCase.input)
+            val expression = getExpressionFromStatement(program.statements.first())
+
+            assertExpressionType<CallExpression>(expression) {
+                assertIdentifier(it.function, testCase.expectedIdentifier)
+                assertThat(it.arguments).hasSize(testCase.expectedArguments.size)
+
+                testCase.expectedArguments.forEachIndexed { index, expectedArgument ->
+                    assertThat(it.arguments?.get(index).toString()).isEqualTo(expectedArgument)
                 }
             }
         }
@@ -276,6 +319,7 @@ class ParserTest {
     data class PrefixTestCase(val input: String, val operator: String, val value: Any)
     data class InfixTestCase(val input: String, val leftValue: Any, val operator: String, val rightValue: Any)
     data class FunctionLiteralTestCase(val input: String, val expectedParams: List<String>)
+    data class CallExpressionTestCase(val input: String, val expectedIdentifier: String, val expectedArguments: List<String>)
 
     private fun parseInput(input: String, expectedStatements: Int = 1) = createParser(input)
         .parseProgram()

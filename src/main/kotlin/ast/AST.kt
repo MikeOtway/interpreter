@@ -119,3 +119,12 @@ data class FunctionLiteral(
     override fun tokenLiteral(): String = token.literal
     override fun toString(): String = "${tokenLiteral()}( ${parameters?.joinToString()}) $body"
 }
+
+data class CallExpression(
+    val token: Token,
+    val function: Expression?,
+    val arguments: List<Expression?>?
+): Expression {
+    override fun tokenLiteral(): String = token.literal
+    override fun toString(): String = "$function(${arguments?.joinToString()})"
+}

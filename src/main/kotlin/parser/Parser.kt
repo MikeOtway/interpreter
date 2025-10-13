@@ -2,6 +2,7 @@ package parser
 
 import ast.BlockStatement
 import ast.BooleanExpression
+import ast.CallExpression
 import ast.Expression
 import ast.ExpressionStatement
 import ast.FunctionLiteral
@@ -15,6 +16,7 @@ import ast.Program
 import ast.ReturnStatement
 import ast.Statement
 import lexer.Lexer
+import parser.Parser.Precedence.CALL
 import parser.Parser.Precedence.EQUALS
 import parser.Parser.Precedence.LESSGREATER
 import parser.Parser.Precedence.LOWEST
@@ -43,6 +45,7 @@ class Parser(private val lexer: Lexer) {
         registerPrefix(TokenType.LPAREN, ::parseGroupedExpression)
         registerPrefix(TokenType.IF, ::parseIfExpression)
         registerPrefix(TokenType.FUNCTION, ::parseFunctionLiteral)
+        registerInfix(TokenType.LPAREN, ::parseCallExpression)
         registerInfix(TokenType.PLUS, ::parseInfixExpression)
         registerInfix(TokenType.MINUS, ::parseInfixExpression)
         registerInfix(TokenType.SLASH, ::parseInfixExpression)
@@ -215,6 +218,34 @@ class Parser(private val lexer: Lexer) {
         )
     }
 
+    private fun parseCallExpression(function: Expression?): Expression {
+        return CallExpression(
+            token = requireCurrentToken(),
+            function = function,
+            arguments = parseCallArguments()
+        )
+    }
+
+    private fun parseCallArguments(): List<Expression?>? {
+        val arguments = mutableListOf<Expression?>()
+
+        if (isPeekToken(TokenType.RPAREN)) {
+            advanceToken()
+            return arguments
+        }
+
+        advanceToken()
+        arguments.add(parseExpression(LOWEST))
+
+        while (isPeekToken(TokenType.COMMA)) {
+            advanceTokens(2)
+            arguments.add(parseExpression(LOWEST))
+        }
+
+        if (!expectNextToken(TokenType.RPAREN)) return null
+        return arguments
+    }
+
     private fun parseFunctionParameters(): List<Identifier>? {
         val parameters = mutableListOf<Identifier>()
         if (isPeekToken(TokenType.RPAREN)) {
@@ -318,7 +349,8 @@ class Parser(private val lexer: Lexer) {
         TokenType.PLUS to SUM,
         TokenType.MINUS to SUM,
         TokenType.SLASH to PRODUCT,
-        TokenType.ASTERISK to PRODUCT
+        TokenType.ASTERISK to PRODUCT,
+        TokenType.LPAREN to CALL
     )
 
     enum class Precedence(val value: Int) {
