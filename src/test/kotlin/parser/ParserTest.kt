@@ -29,40 +29,46 @@ class ParserTest {
 
     @Test
     fun `should parse let statements`() {
-        val input = """
-            let x = 5;
-            let y = 10;
-            let foobar = 838383;
-        """.trimIndent()
+        val tests = listOf(
+            LetStatementTestCase("let x = 5;", "x", 5L),
+            LetStatementTestCase("let y = true;", "y", true),
+            LetStatementTestCase("let foobar = y;", "foobar", "y")
+        )
 
-        val program = parseInput(input, expectedStatements = 3)
-        val expectedIdentifiers = listOf("x", "y", "foobar")
-
-        expectedIdentifiers.forEachIndexed { index, expectedIdentifier ->
-            val statement = program.statements[index]
+        tests.forEach { testCase ->
+            val program = parseInput(testCase.input)
+            val statement = program.statements.first()
             assertThat(statement.tokenLiteral()).isEqualTo(LET_TOKEN)
 
             assertExpressionType<LetStatement>(statement) {
-                assertThat(it.name?.value).isEqualTo(expectedIdentifier)
-                assertThat(it.name?.tokenLiteral()).isEqualTo(expectedIdentifier)
+                assertThat(it.name?.value).isEqualTo(testCase.expectedIdentifier)
+                assertThat(it.name?.tokenLiteral()).isEqualTo(testCase.expectedIdentifier)
+
+                assertLiteral(it.value, testCase.expectedValue)
             }
         }
     }
 
     @Test
     fun `should parse return statements`() {
-        val input = """
-            return 5;
-            return 10;
-            return 993322;
-        """.trimIndent()
+        val testCases = mapOf(
+            "return 5;" to 5L,
+            "return 10;" to 10L,
+            "return 993322;" to 993322L
+        )
 
-        val program = parseInput(input, expectedStatements = 3)
+        testCases.forEach { (input, expectedValue) ->
+            val program = parseInput(input)
 
-        program.statements.forEach { statement ->
-            assertThat(statement.tokenLiteral()).isEqualTo(RETURN_TOKEN)
-            assertExpressionType<ReturnStatement>(statement) {}
+            program.statements.forEach { statement ->
+                assertThat(statement.tokenLiteral()).isEqualTo(RETURN_TOKEN)
+                assertExpressionType<ReturnStatement>(statement) {
+                    assertLiteral(it.returnValue, expectedValue)
+                }
+            }
         }
+
+
     }
 
     @Test
@@ -287,6 +293,7 @@ class ParserTest {
     private fun assertLiteral(expression: Expression?, value: Any) {
         when (value) {
             is String -> assertIdentifier(expression, value)
+            is Int -> assertIntegerLiteral(expression, value.toLong())
             is Long -> assertIntegerLiteral(expression, value)
             is Boolean -> assertBooleanExpression(expression, value)
             else -> fail("Unsupported literal type: ${value::class}")
@@ -315,6 +322,7 @@ class ParserTest {
         }
     }
 
+    data class LetStatementTestCase(val input: String, val expectedIdentifier: String, val expectedValue: Any)
     data class LiteralTestCase(val input: String, val expected: Any)
     data class PrefixTestCase(val input: String, val operator: String, val value: Any)
     data class InfixTestCase(val input: String, val leftValue: Any, val operator: String, val rightValue: Any)

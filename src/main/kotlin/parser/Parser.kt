@@ -116,15 +116,23 @@ class Parser(private val lexer: Lexer) {
 
         if (!expectNextToken(TokenType.ASSIGN)) return null
 
-        advanceTokenUntil(TokenType.SEMICOLON)
+        advanceToken()
+
+        statement = statement.copy(value = parseExpression(LOWEST))
+
+        if (isPeekToken(TokenType.SEMICOLON)) advanceToken()
 
         return statement
     }
 
     private fun parseReturnStatement(): ReturnStatement {
-        val statement = ReturnStatement(token = requireCurrentToken())
+        val currentToken = requireCurrentToken()
         advanceToken()
-        advanceTokenUntil(TokenType.SEMICOLON)
+
+        val statement = ReturnStatement(token = currentToken, returnValue = parseExpression(LOWEST))
+
+        if (isPeekToken(TokenType.SEMICOLON)) advanceToken()
+
         return statement
     }
 
