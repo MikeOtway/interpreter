@@ -22,80 +22,70 @@ import parser.Parser.Precedence.LESSGREATER
 import parser.Parser.Precedence.LOWEST
 import parser.Parser.Precedence.PRODUCT
 import parser.Parser.Precedence.SUM
-import token.Token
 import token.TokenType
 
-typealias PrefixParseFn = () -> Expression?
-typealias InlineParseFn = (Expression?) -> Expression
-
-class Parser(private val lexer: Lexer) {
-    private val errors = mutableListOf<String>()
-    private var currentToken: Token? = null
-    private var peekToken: Token? = null
-    private var prefixParseFunctions = mutableMapOf<TokenType, PrefixParseFn>()
-    private var infixParseFunctions = mutableMapOf<TokenType, InlineParseFn>()
+class Parser(lexer: Lexer) {
+    private val tokenReader = TokenReader(lexer)
+    private val registry = ParserRegistry()
+    private val errorHandler = ParserErrorHandler()
 
     init {
-        registerPrefix(TokenType.IDENT, ::parseIdentifier)
-        registerPrefix(TokenType.INT, ::parseIntegerLiteral)
-        registerPrefix(TokenType.BANG, ::parsePrefixExpression)
-        registerPrefix(TokenType.MINUS, ::parsePrefixExpression)
-        registerPrefix(TokenType.TRUE, ::parseBoolean)
-        registerPrefix(TokenType.FALSE, ::parseBoolean)
-        registerPrefix(TokenType.LPAREN, ::parseGroupedExpression)
-        registerPrefix(TokenType.IF, ::parseIfExpression)
-        registerPrefix(TokenType.FUNCTION, ::parseFunctionLiteral)
-        registerInfix(TokenType.LPAREN, ::parseCallExpression)
-        registerInfix(TokenType.PLUS, ::parseInfixExpression)
-        registerInfix(TokenType.MINUS, ::parseInfixExpression)
-        registerInfix(TokenType.SLASH, ::parseInfixExpression)
-        registerInfix(TokenType.ASTERISK, ::parseInfixExpression)
-        registerInfix(TokenType.EQ, ::parseInfixExpression)
-        registerInfix(TokenType.NOT_EQ, ::parseInfixExpression)
-        registerInfix(TokenType.LT, ::parseInfixExpression)
-        registerInfix(TokenType.GT, ::parseInfixExpression)
-
-        advanceTokens(2) // Initialise both current and peek tokens
+        setupParsers()
     }
 
-    fun registerPrefix(tokenType: TokenType, parseFn: PrefixParseFn) {
-        prefixParseFunctions[tokenType] = parseFn
-    }
-
-    fun registerInfix(tokenType: TokenType, parseFn: InlineParseFn) {
-        infixParseFunctions[tokenType] = parseFn
-    }
-
-    private fun parseIdentifier(): Expression =
-        Identifier(token = requireCurrentToken(), value = requireCurrentToken().literal)
-
-    private fun parseBoolean(): Expression =
-        BooleanExpression(token = requireCurrentToken(), value = isCurrentToken(TokenType.TRUE))
-
-    private fun parseIntegerLiteral(): Expression? {
-        val value = requireCurrentToken().literal.toLongOrNull()
-        if (value == null) {
-            errors.add("could not parse ${currentToken?.literal} as integer")
-            return null
+    private fun setupParsers() {
+        registry.apply {
+            registerPrefix(TokenType.IDENT, ::parseIdentifier)
+            registerPrefix(TokenType.INT, ::parseIntegerLiteral)
+            registerPrefix(TokenType.BANG, ::parsePrefixExpression)
+            registerPrefix(TokenType.MINUS, ::parsePrefixExpression)
+            registerPrefix(TokenType.TRUE, ::parseBoolean)
+            registerPrefix(TokenType.FALSE, ::parseBoolean)
+            registerPrefix(TokenType.LPAREN, ::parseGroupedExpression)
+            registerPrefix(TokenType.IF, ::parseIfExpression)
+            registerPrefix(TokenType.FUNCTION, ::parseFunctionLiteral)
+            registerInfix(TokenType.LPAREN, ::parseCallExpression)
+            registerInfix(TokenType.PLUS, ::parseInfixExpression)
+            registerInfix(TokenType.MINUS, ::parseInfixExpression)
+            registerInfix(TokenType.SLASH, ::parseInfixExpression)
+            registerInfix(TokenType.ASTERISK, ::parseInfixExpression)
+            registerInfix(TokenType.EQ, ::parseInfixExpression)
+            registerInfix(TokenType.NOT_EQ, ::parseInfixExpression)
+            registerInfix(TokenType.LT, ::parseInfixExpression)
+            registerInfix(TokenType.GT, ::parseInfixExpression)
         }
-
-        return IntegerLiteral(token = requireCurrentToken(), value = value)
     }
 
     fun parseProgram(): Program {
         val program = Program()
 
-        while (currentToken?.type != TokenType.EOF) {
+        while (!tokenReader.isAtEnd()) {
             parseStatement()?.let { program.statements.add(it) }
-            advanceToken()
+            tokenReader.advanceToken()
         }
         return program
     }
 
-    fun getErrors(): List<String> = errors
+    private fun parseIdentifier(): Expression =
+        Identifier(token = tokenReader.current(), value = tokenReader.current().literal)
+
+    private fun parseBoolean(): Expression =
+        BooleanExpression(token = tokenReader.current(), value = tokenReader.isCurrentToken(TokenType.TRUE))
+
+    private fun parseIntegerLiteral(): Expression? {
+        val currentToken = tokenReader.current()
+        val value = currentToken.literal.toLongOrNull()
+
+        if (value == null) {
+            errorHandler.recordError("could not parse ${currentToken.literal} as integer")
+            return null
+        }
+
+        return IntegerLiteral(token = currentToken, value = value)
+    }
 
     private fun parseStatement(): Statement? {
-        return when (currentToken?.type) {
+        return when (tokenReader.current().type) {
             TokenType.LET -> parseLetStatement()
             TokenType.RETURN -> parseReturnStatement()
             else -> parseExpressionStatement()
@@ -103,54 +93,54 @@ class Parser(private val lexer: Lexer) {
     }
 
     private fun parseLetStatement(): LetStatement? {
-        var statement = LetStatement(token = requireCurrentToken())
+        var statement = LetStatement(token = tokenReader.current())
 
         if (!expectNextToken(TokenType.IDENT)) return null
 
         statement = statement.copy(
             name = Identifier(
-                token = requireCurrentToken(),
-                value = requireCurrentToken().literal
+                token = tokenReader.current(),
+                value = tokenReader.current().literal
             )
         )
 
         if (!expectNextToken(TokenType.ASSIGN)) return null
 
-        advanceToken()
+        tokenReader.advanceToken()
 
         statement = statement.copy(value = parseExpression(LOWEST))
 
-        if (isPeekToken(TokenType.SEMICOLON)) advanceToken()
+        if (tokenReader.isPeekToken(TokenType.SEMICOLON)) tokenReader.advanceToken()
 
         return statement
     }
 
     private fun parseReturnStatement(): ReturnStatement {
-        val currentToken = requireCurrentToken()
-        advanceToken()
+        val currentToken = tokenReader.current()
+        tokenReader.advanceToken()
 
         val statement = ReturnStatement(token = currentToken, returnValue = parseExpression(LOWEST))
 
-        if (isPeekToken(TokenType.SEMICOLON)) advanceToken()
+        if (tokenReader.isPeekToken(TokenType.SEMICOLON)) tokenReader.advanceToken()
 
         return statement
     }
 
     private fun parseExpressionStatement(): ExpressionStatement {
         val statement = ExpressionStatement(
-            token = requireCurrentToken(),
+            token = tokenReader.current(),
             expression = parseExpression(LOWEST)
         )
-        if (isPeekToken(TokenType.SEMICOLON)) {
-            advanceToken()
+        if (tokenReader.isPeekToken(TokenType.SEMICOLON)) {
+            tokenReader.advanceToken()
         }
         return statement
     }
 
     private fun parsePrefixExpression(): Expression {
-        val prefixToken = requireCurrentToken()
+        val prefixToken = tokenReader.current()
 
-        advanceToken()
+        tokenReader.advanceToken()
 
         return PrefixExpression(
             token = prefixToken,
@@ -160,11 +150,10 @@ class Parser(private val lexer: Lexer) {
     }
 
     private fun parseInfixExpression(left: Expression?): Expression {
-        val infixToken = requireCurrentToken()
-
+        val infixToken = tokenReader.current()
 
         val precedence = currentPrecedence()
-        advanceToken()
+        tokenReader.advanceToken()
 
         return InfixExpression(
             token = infixToken,
@@ -175,7 +164,7 @@ class Parser(private val lexer: Lexer) {
     }
 
     private fun parseGroupedExpression(): Expression? {
-        advanceToken()
+        tokenReader.advanceToken()
 
         val expression = parseExpression(LOWEST)
         if (!expectNextToken(TokenType.RPAREN)) return null
@@ -184,11 +173,11 @@ class Parser(private val lexer: Lexer) {
     }
 
     private fun parseIfExpression(): Expression? {
-        val current = requireCurrentToken()
+        val current = tokenReader.current()
 
         if (!expectNextToken(TokenType.LPAREN)) return null
 
-        advanceToken()
+        tokenReader.advanceToken()
         val condition = parseExpression(LOWEST)
 
         if (!expectNextToken(TokenType.RPAREN)) return null
@@ -196,8 +185,8 @@ class Parser(private val lexer: Lexer) {
 
         val consequence = parseBlockStatement()
 
-        val alternative = if (isPeekToken(TokenType.ELSE)) {
-            advanceToken()
+        val alternative = if (tokenReader.isPeekToken(TokenType.ELSE)) {
+            tokenReader.advanceToken()
             if (!expectNextToken(TokenType.LBRACE)) return null
             parseBlockStatement()
         } else null
@@ -211,7 +200,7 @@ class Parser(private val lexer: Lexer) {
     }
 
     private fun parseFunctionLiteral(): Expression? {
-        val current = requireCurrentToken()
+        val current = tokenReader.current()
 
         if (!expectNextToken(TokenType.LPAREN)) return null
 
@@ -228,7 +217,7 @@ class Parser(private val lexer: Lexer) {
 
     private fun parseCallExpression(function: Expression?): Expression {
         return CallExpression(
-            token = requireCurrentToken(),
+            token = tokenReader.current(),
             function = function,
             arguments = parseCallArguments()
         )
@@ -237,16 +226,16 @@ class Parser(private val lexer: Lexer) {
     private fun parseCallArguments(): List<Expression?>? {
         val arguments = mutableListOf<Expression?>()
 
-        if (isPeekToken(TokenType.RPAREN)) {
-            advanceToken()
+        if (tokenReader.isPeekToken(TokenType.RPAREN)) {
+            tokenReader.advanceToken()
             return arguments
         }
 
-        advanceToken()
+        tokenReader.advanceToken()
         arguments.add(parseExpression(LOWEST))
 
-        while (isPeekToken(TokenType.COMMA)) {
-            advanceTokens(2)
+        while (tokenReader.isPeekToken(TokenType.COMMA)) {
+            tokenReader.advanceTokens(2)
             arguments.add(parseExpression(LOWEST))
         }
 
@@ -256,19 +245,19 @@ class Parser(private val lexer: Lexer) {
 
     private fun parseFunctionParameters(): List<Identifier>? {
         val parameters = mutableListOf<Identifier>()
-        if (isPeekToken(TokenType.RPAREN)) {
-            advanceToken()
+        if (tokenReader.isPeekToken(TokenType.RPAREN)) {
+            tokenReader.advanceToken()
             return parameters
         }
 
-        advanceToken()
+        tokenReader.advanceToken()
 
-        val parameter = Identifier(token = requireCurrentToken(), value = requireCurrentToken().literal)
+        val parameter = Identifier(token = tokenReader.current(), value = tokenReader.current().literal)
         parameters.add(parameter)
 
-        while (isPeekToken(TokenType.COMMA)) {
-            advanceTokens(2)
-            val parameter = Identifier(token = requireCurrentToken(), value = requireCurrentToken().literal)
+        while (tokenReader.isPeekToken(TokenType.COMMA)) {
+            tokenReader.advanceTokens(2)
+            val parameter = Identifier(token = tokenReader.current(), value = tokenReader.current().literal)
             parameters.add(parameter)
         }
 
@@ -278,76 +267,49 @@ class Parser(private val lexer: Lexer) {
     }
 
     private fun parseBlockStatement(): BlockStatement {
-        val current = requireCurrentToken()
+        val current = tokenReader.current()
         val statements = mutableListOf<Statement>()
 
-        advanceToken()
+        tokenReader.advanceToken()
 
-        while (!isCurrentToken(TokenType.RBRACE) && !isCurrentToken(TokenType.EOF)) {
+        while (!tokenReader.isCurrentToken(TokenType.RBRACE) && !tokenReader.isCurrentToken(TokenType.EOF)) {
             val statement = parseStatement()
             if (statement != null) statements.add(statement)
-            advanceToken()
+            tokenReader.advanceToken()
         }
         return BlockStatement(token = current, statements = statements)
     }
 
     private fun parseExpression(precedence: Precedence): Expression? {
-        val prefix = prefixParseFunctions[currentToken?.type]
+        val prefix = registry.getPrefixParser(tokenReader.current().type)
         if (prefix == null) {
-            errors.add("no prefix parse function for ${requireCurrentToken().type} found")
+            errorHandler.recordError("no prefix parse function for ${tokenReader.current().type} found")
             return null
         }
         var leftExp = prefix()
 
-        while (!isPeekToken(TokenType.SEMICOLON) && precedence < peekPrecedence()) {
-            val infix = infixParseFunctions[peekToken?.type] ?: return leftExp
-            advanceToken()
+        while (!tokenReader.isPeekToken(TokenType.SEMICOLON) && precedence < peekPrecedence()) {
+            val infix = registry.getInfixParser(tokenReader.peek()?.type) ?: return leftExp
+            tokenReader.advanceToken()
             leftExp = infix(leftExp)
         }
 
         return leftExp
     }
 
-    private fun advanceToken() {
-        currentToken = peekToken
-        peekToken = lexer.nextToken()
-    }
-
-    private fun advanceTokens(count: Int) {
-        repeat(count) { advanceToken() }
-    }
-
-    private fun advanceTokenUntil(tokenType: TokenType) {
-        while (!isCurrentToken(tokenType)) {
-            advanceToken()
-        }
-    }
-
-    private fun isCurrentToken(tokenType: TokenType): Boolean =
-        currentToken?.type == tokenType
-
-    private fun isPeekToken(tokenType: TokenType): Boolean =
-        peekToken?.type == tokenType
-
     private fun expectNextToken(tokenType: TokenType): Boolean {
-        if (isPeekToken(tokenType)) {
-            advanceToken()
+        if (tokenReader.isPeekToken(tokenType)) {
+            tokenReader.advanceToken()
             return true
         }
-        recordPeekError(tokenType)
+        errorHandler.recordPeekError(expected = tokenType, actual = tokenReader.peek()?.type)
         return false
     }
 
-    private fun requireCurrentToken(): Token =
-        currentToken ?: throw IllegalStateException("Current token is null")
+    fun getErrors(): List<String> = errorHandler.getErrors()
 
-    fun recordPeekError(tokenType: TokenType) {
-        val message = "expected next token to be $tokenType, got ${peekToken?.type} instead"
-        errors.add(message)
-    }
-
-    private fun peekPrecedence(): Precedence = precedences[peekToken?.type] ?: LOWEST
-    private fun currentPrecedence(): Precedence = precedences[currentToken?.type] ?: LOWEST
+    private fun peekPrecedence(): Precedence = precedences[tokenReader.peek()?.type] ?: LOWEST
+    private fun currentPrecedence(): Precedence = precedences[tokenReader.current().type] ?: LOWEST
 
     val precedences = mapOf(
         TokenType.EQ to EQUALS,
